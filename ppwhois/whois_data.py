@@ -69,7 +69,7 @@ HIDE_STR = [("NOTICE AND TERMS OF USE: You", ""),  # NetSol
             ("% The WHOIS service offered by EURid", "% of the database"),  # eu
             ("% WHOIS LEGAL STATEMENT AND TERMS & CONDITIONS", ""),  # sx
             ("NeuStar, Inc., the Registry", "OF THE AVAILABILITY")]  # us
-            
+
 ASN = [( 248, 251, "whois.ripe.net" ),
     ( 306, 371, "whois.nic.mil" ),
     ( 379, 508, "whois.nic.mil" ),
@@ -918,7 +918,7 @@ NIC =  [("net-",        "whois.arin.net"),
         ("rtrs-",       "whois.ripe.net"),
         ("fltr-",       "whois.ripe.net"),
         ("prng-",       "whois.ripe.net")]
-        
+
 FLAGS = {"whois.cat": ("utf-8",	"-C UTF-8" ),
          "whois.conac.cn": ("utf-8",	None ),
          "whois.corenic.net": ("utf-8",	"-C UTF-8" ),
