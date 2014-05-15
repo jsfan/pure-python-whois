@@ -979,3 +979,28 @@ FLAGS = {"whois.cat": ("utf-8",	"-C UTF-8" ),
          "whois.nic.org.uy": ("utf-8", 	None),
          "whois.nic.wf": ("utf-8", 	None),
          "whois.nic.yt": ("utf-8", 	None)}
+
+AVAILABLE = [r'^(Domain|Key)\s+not\s+found\.*',
+             r'^No\s+match',
+             r'^%\s+no\s+matching\s+objects\s+found',
+             r'^No\s+such\s+domain:\s+',
+             r'^((%\s+Object|Domain)\s+)*NOT\s+FOUND',
+             r'^%\s+This\s+query\+returned\+0\+objects\.',
+             r'^We\s+do\s+not\s+have\s+an\s+entry\s+in\s+our\s+database\s+matching\s+your\s+query\.',
+             r'^%\s+No\s+entries\s+found',
+             r'^No\s+domain\s+records\s+were\s+found\s+to\s+match\s+',
+             r'^No\s+(Data\s+)*Found',
+             r'^>>>\s+Domain\s+[^\s]+\s+is\s+available\s+for\s+registration',
+             r'^%\s+No\s+entries\s+found\s+for\s+',
+             r'^\s*This\s+domain\s+name\s+has\s+not\s+been\s+registered.',
+             r'^%\s+nothing\s+found$',
+             r'^(Domain\s+)*Status:\s+(No\s+Object\s+Found|Available|(Not\sregistered))',
+             r'^Domain\s+[^\s]*\s+is\s+available\s+for\s+purchase',
+             r'^Domain\s+[^\s]*\s+not\s+registe*red\.',
+             r'^The\s+domain\s+has\s+not\s+been\s+registered\.'
+             r'^>>>\s+Domain\s+[^\s]+\s+is\s+available\s+for\s+registration',
+             r'^query_status:\s+220\s+Available']
+EXPIRY = [r'^\s*((Domain|Registry)\s+)*Expir[ye]\s+Date:\s*',
+          r'^\s*(Domain\s+)*Expiration\s+Date:\s*',
+          r'^\s*((Domain|Record)\s+)*Expires(\sOn)*:*\s*',
+          r'^\s*domain_datebilleduntil:\s+']

@@ -16,28 +16,28 @@ class Whois(object):
     Option mapping:
         h/host => host: '<host>'
         p/port => PORT: <port>
-        H => hide-disclaimers
-        l => one-level-less
-        L => all-levels-less
-        m => one-level-more
-        M => all-levels-more
-        c => smallest-mnt-irt
+        H => hide_disclaimers
+        l => one_level_less
+        L => all_levels_less
+        m => one_level_more
+        M => all_levels_more
+        c => smallest_mnt_irt
         x => exact
         b => brief
-        B => no-filter
-        G => no-group
-        d => no-reverse-dns
-        i => inverse-attr: [attr, attr,...]
-        T => only-type: [type, type,...]
-        K => primary-only
-        r => no-reverse-contact
-        R => local-copy-only
-        a => search-mirrors
-        s => search-mirrors-source: [source, source,...]
-        g => search-mirrors-range: (source, first, last)
+        B => no_filter
+        G => no_group
+        d => no_reverse_dns
+        i => inverse_attr: [attr, attr,...]
+        T => only_type: [type, type,...]
+        K => primary_only
+        r => no_reverse_contact
+        R => local_copy_only
+        a => search_mirrors
+        s => search_mirrors_source: [source, source,...]
+        g => search_mirrors_range: (source, first, last)
         t => template: '<TYPE>'
-        v => verbose-template: '<TYPE>'
-        q => query-info: '<version|sources|types>'
+        v => verbose_template: '<TYPE>'
+        q => query_info: '<version|sources|types>'
     """
 
     def __init__(self):
@@ -50,27 +50,27 @@ class Whois(object):
         self.host = ''
         self.port = 0
         fstring = ''
-        ripeflags = {'search-mirrors': 'a',
+        ripeflags = {'search_mirrors': 'a',
                     'brief': 'b',
-                    'no-filter': 'B',
-                    'smallest-mnt-irt': 'c',
-                    'no-reverse-dns': 'd',
-                    'no-group': 'G',
-                    'primary-only': 'K',
-                    'one-level-less': 'l',
-                    'all-levels-less': 'L',
-                    'one-level-more': 'm',
-                    'all-levels-more': 'M',
-                    'no-reverse-contact': 'r',
-                    'local-copy-only': 'R',
+                    'no_filter': 'B',
+                    'smallest_mnt_irt': 'c',
+                    'no_reverse_dns': 'd',
+                    'no_group': 'G',
+                    'primary_only': 'K',
+                    'one_level_less': 'l',
+                    'all_levels_less': 'L',
+                    'one_level_more': 'm',
+                    'all_levels_more': 'M',
+                    'no_reverse_contact': 'r',
+                    'local_copy_only': 'R',
                     'exact': 'x',
-                    'search-mirrors-range': 'g',
-                    'inverse-attr': 'i',
-                    'search-mirrors-source': 's',
-                    'only-type': 'T',
+                    'search_mirrors_range': 'g',
+                    'inverse_attr': 'i',
+                    'search_mirrors_source': 's',
+                    'only_type': 'T',
                     'template' : 't',
-                    'verbose-template': 'v',
-                    'query-info': 'q'}
+                    'verbose_template': 'v',
+                    'query_info': 'q'}
 
         nopar = False
         if flags:
@@ -83,17 +83,17 @@ class Whois(object):
                 if isinstance(pv, list) or isinstance(pv, tuple):
                     fstring += '-%s ' % v
                 else:
-                    if f == 'search-mirrors-range':
+                    if f == 'search_mirrors_range':
                         source = pv.pop(0)
                         pv[0] = source + ':' + pv[0]
-                    fstring += '-%s %s' % (v, pv)
-                    if f in ['template', 'verbose-template', 'query-info']:
+                    fstring += '_%s %s' % (v, pv)
+                    if f in ['template', 'verbose_template', 'query_info']:
                         nopar = True
 
         for f, v in uargs.items():
             if (f == 'host'): # host
                 self.host = v
-            elif (f == 'hide-disclaimers'): # hide disclaimer
+            elif (f == 'hide_disclaimers'): # hide disclaimer
                 self.hide_disclaimer = True
             elif (f == 'port'): # port
                 self.port = v
@@ -239,7 +239,11 @@ class Whois(object):
                 self.host = self.guess_server(p)
 
         if not self.host:
-            return {'error': 'No host found.'}
+            try:
+                _ = first_result['result']
+                return first_result
+            except KeyError:
+                return {'error': 'No host found.'}
 
         query_string, warning = self.queryformat(self.host, flags, query)
         sockfd = self.openconn(self.host, self.port)
@@ -271,6 +275,7 @@ class Whois(object):
                         else:
                             merged_result.setdefault(k, []).append(v)
             result = merged_result
+        result['available'] = min(result['available'])
         return result
 
     def openconn(self, server, port=None):
@@ -385,15 +390,18 @@ class Whois(object):
         hide = False
         referral_server = None
 
-        sock.send(("%s\r\n" % query).encode('ascii'))
-        sock.setblocking(True)
+        try:
+            sock.send(("%s\r\n" % query).encode('ascii'))
+            sock.setblocking(True)
+        except socket.error:
+            raise ConnectionReset('Connection was reset while sending data')
 
         response = ''
         while True:
             rb = sock.recv(RCVBUF)
             if not rb:
                 break
-            rb = rb.decode('ascii')
+            rb = rb.decode('utf-8')
             # 6bone-style referral:
             # % referto: whois -h whois.arin.net -p 43 as 1
             if  not referral_server and '% referto:' in rb:
@@ -410,15 +418,22 @@ class Whois(object):
             response += rb
 
         resp_lst = []
+        expiry = None
+        available = None
         for l in response.split('\n'):
             hide = self.hide_line(hide, l)
             if not hide:
                 resp_lst.append(l.rstrip())
+            if not expiry:
+                expiry = self.expiry(l)
+            if not available or available < 0:
+                available = self.is_available(l)
+
         if hide:
             return ('', 'Catastrophic error: disclaimer text has been changed.\n' \
                     'Please upgrade this package.\n')
         sock.close()
-        return (referral_server, {'result': resp_lst})
+        return (referral_server, {'result': resp_lst, 'expiry': expiry, 'available': available})
 
     def hide_line(self, hide, line):
         if not self.hide_disclaimer:
@@ -433,6 +448,19 @@ class Whois(object):
                 if line == hs[1] or (line and line.startswith(hs[1])):
                     return -1
         return 0
+
+    def is_available(self, line):
+        for av_marker in data.AVAILABLE:
+            if re.search(av_marker, line, re.IGNORECASE):
+                return 1
+        return -1
+
+    def expiry(self, line):
+        for exp in data.EXPIRY:
+            if re.search(exp, line, re.IGNORECASE):
+                return re.sub(exp, '', line, flags=re.IGNORECASE)
+        return False
+
 
     def convert_teredo(self, s):
         words = s.split(':')
@@ -467,6 +495,10 @@ class Whois(object):
         ip = words[:4]
         ip.reverse()
         return '.'.join(ip)
+
+
+class ConnectionReset(Exception):
+    pass
 
 
 if __name__ == "__main__":
