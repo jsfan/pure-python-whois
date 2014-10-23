@@ -3,9 +3,11 @@ import sys
 import re
 
 import ppwhois.whois_data as data
+from ppwhois.exceptions import *
 
 IDSTRING = 'ppwhois-0.1'
 RCVBUF = 2048
+
 
 class Whois(object):
     """
@@ -112,7 +114,6 @@ class Whois(object):
             self.source_addr = source_addr
 
         return self.handle_query(query, fstring)
-
 
     def normalise_domain(self, domain):
         domain.rstrip('. \t')
@@ -393,18 +394,21 @@ class Whois(object):
         try:
             sock.send(("%s\r\n" % query).encode('ascii'))
             sock.setblocking(True)
-        except socket.error:
-            raise ConnectionReset('Connection was reset while sending data')
+        except socket.error as e:
+            raise ConnectionReset('Connection was reset  with error "%s" while sending data' % e)
 
         response = ''
         while True:
-            rb = sock.recv(RCVBUF)
+            try:
+                rb = sock.recv(RCVBUF)
+            except socket.error as e:
+                raise TransferFailed('Transfer failed  with error "%s" while receiving data' % e)
             if not rb:
                 break
             rb = rb.decode('utf-8')
             # 6bone-style referral:
             # % referto: whois -h whois.arin.net -p 43 as 1
-            if  not referral_server and '% referto:' in rb:
+            if not referral_server and '% referto:' in rb:
                 # XXX we are ignoring the new query string
                 rs = re.compile(data.REFERTO_FORMAT)
                 ns, np = rs.group(1, 2)
@@ -439,7 +443,7 @@ class Whois(object):
         if not self.hide_disclaimer:
             return 0
         hide = 0 if hide < 1 else 1
-        if not hide: # start hiding?
+        if not hide:  # start hiding?
             for hs in data.HIDE_STR:
                 if line == hs[0] or (line and line.startswith(hs[0])):
                     return 1
@@ -495,11 +499,6 @@ class Whois(object):
         ip = words[:4]
         ip.reverse()
         return '.'.join(ip)
-
-
-class ConnectionReset(Exception):
-    pass
-
 
 if __name__ == "__main__":
     print('This package can currently only be used as a library.')
