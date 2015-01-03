@@ -93,11 +93,11 @@ class Whois(object):
                         nopar = True
 
         for f, v in uargs.items():
-            if (f == 'host'): # host
+            if f == 'host': # host
                 self.host = v
-            elif (f == 'hide_disclaimers'): # hide disclaimer
+            elif f == 'hide_disclaimers': # hide disclaimer
                 self.hide_disclaimer = True
-            elif (f == 'port'): # port
+            elif f == 'port': # port
                 self.port = v
 
         if not query and not nopar:
@@ -123,7 +123,7 @@ class Whois(object):
         return ' '.join(dwords)
 
     def guess_server(self, query):
-        if ':' in query: # IPv6
+        if ':' in query:  # IPv6
             if query[:2].lower() == 'as':
                 try:
                     asn = int(query[2:])
@@ -146,10 +146,10 @@ class Whois(object):
             for ip6net in data.IPV6:
                 if (v6net & (int('FFFFFFFF', 16) << (32 - ip6net[1]))) == ip6net[0]:
                     return ip6net[2]
-            return '\x06' # unknown network
+            return '\x06'  # unknown network
 
         if '@' in query:
-            return '\x05' # email address
+            return '\x05'  # email address
 
         # no dot and no hyphen means it's a NSI NIC handle or ASN (?)
         if not '.' in query and not '-' in query:
@@ -162,10 +162,10 @@ class Whois(object):
                     return '\x05'
                 except ValueError:
                     pass
-            if query[0] == '!': # NSI NIC handle
+            if query[0] == '!':  # NSI NIC handle
                 return 'whois.networksolutions.com'
             else:
-                return '\x05' # probably a unknown kind of NIC handle
+                return '\x05'  # probably a unknown kind of NIC handle
 
         # smells like an IP?
         try:
@@ -183,7 +183,7 @@ class Whois(object):
                 return tld[1]
 
         # no dot but hyphen
-        if not '.' in query:
+        if '.' not in query:
             # search for strings at the start of the word */
             for nic in data.NIC:
                 if query.startswith(nic[0]):
@@ -372,7 +372,7 @@ class Whois(object):
         referral_server = None
         fresult = result.pop('result', None)
         if not fresult:
-            return ('', {'error': 'First query failed'})
+            return '', {'error': 'First query failed'}
         result['result'] = fresult
         found = False
         domlabel = re.compile(data.CRSDOMLABEL)
