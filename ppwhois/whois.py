@@ -5,7 +5,7 @@ import re
 import ppwhois.whois_data as data
 from ppwhois.exceptions import *
 
-IDSTRING = 'ppwhois-0.1'
+IDSTRING = 'ppwhois-0.1.1'
 RCVBUF = 2048
 
 
@@ -152,7 +152,7 @@ class Whois(object):
             return '\x05'  # email address
 
         # no dot and no hyphen means it's a NSI NIC handle or ASN (?)
-        if not '.' in query and not '-' in query:
+        if '.' not in query and not '-' in query:
             if query[:2].lower() == 'as':
                 try:
                     asn = int(query[2:])
@@ -217,11 +217,13 @@ class Whois(object):
                 if not sockfd:
                     return sockfd
                 self.host, first_result = self.query_crsnic(sockfd, query)
+                sockfd.close()  # close socket from first connection
             elif code == 8:
                 sockfd = self.openconn('whois.afilias-grs.info')
                 if not sockfd:
                     return sockfd
                 self.host, first_result = self.query_afilias(sockfd, query)
+                sockfd.close()  # close socket from first connection
             elif code == 0x0A:
                 p = self.convert_6to4(query)
                 notice = 'Querying for the IPv4 endpoint %s of a 6to4 IPv6 address.' % p
@@ -252,6 +254,7 @@ class Whois(object):
             return sockfd
 
         server, result = self.do_query(sockfd, query_string)
+        sockfd.close()  # close follow-up connection
 
         merged_result = {}
         for d in [first_result, result, {'warning': warning}, {'notice': notice}]:
@@ -385,7 +388,7 @@ class Whois(object):
                 if wl:
                     referral_server = wl.group(1).strip()
                     break
-        return (referral_server, result)
+        return referral_server, result
 
     def do_query(self, sock, query):
         hide = False
