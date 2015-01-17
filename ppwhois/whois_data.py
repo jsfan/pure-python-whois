@@ -999,7 +999,8 @@ AVAILABLE = [r'^(Domain|Key)\s+not\s+found\.*',
              r'^Domain\s+[^\s]*\s+not\s+registe*red\.',
              r'^The\s+domain\s+has\s+not\s+been\s+registered\.'
              r'^>>>\s+Domain\s+[^\s]+\s+is\s+available\s+for\s+registration',
-             r'^query_status:\s+220\s+Available']
+             r'^query_status:\s+220\s+Available',
+             r'^[Nn]ot\sregistered']
 EXPIRY = [r'^\s*((Domain|Registry)\s+)*Expir[ye]\s+Date:\s*',
           r'^\s*(Domain\s+)*Expiration\s+Date:\s*',
           r'^\s*((Domain|Record)\s+)*Expires(\sOn)*:*\s*',
