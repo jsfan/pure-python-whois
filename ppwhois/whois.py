@@ -1,6 +1,7 @@
 import socket
 import sys
 import re
+import chardet
 
 import ppwhois.whois_data as data
 from ppwhois.exceptions import *
@@ -408,7 +409,8 @@ class Whois(object):
                 raise TransferFailed('Transfer failed  with error "%s" while receiving data' % e)
             if not rb:
                 break
-            rb = rb.decode('utf-8')
+            enc = chardet.detect(rb)['encoding']
+            rb = rb.decode(enc)
             # 6bone-style referral:
             # % referto: whois -h whois.arin.net -p 43 as 1
             if not referral_server and '% referto:' in rb:
