@@ -6,7 +6,7 @@ import chardet
 import ppwhois.whois_data as data
 from ppwhois.exceptions import *
 
-IDSTRING = 'ppwhois-0.1.1'
+IDSTRING = 'ppwhois-0.1.4'
 RCVBUF = 2048
 
 
@@ -429,6 +429,7 @@ class Whois(object):
         resp_lst = []
         expiry = None
         available = None
+        blacklisted = None
         for l in response.split('\n'):
             hide = self.hide_line(hide, l)
             if not hide:
@@ -437,12 +438,17 @@ class Whois(object):
                 expiry = self.expiry(l)
             if not available or available < 0:
                 available = self.is_available(l)
+            if not blacklisted:
+                blacklisted = self.is_blacklisted(l)
 
         if hide:
-            return ('', 'Catastrophic error: disclaimer text has been changed.\n' \
+            return ('', 'Catastrophic error: disclaimer text has been changed.\n'
                     'Please upgrade this package.\n')
         sock.close()
-        return (referral_server, {'result': resp_lst, 'expiry': expiry, 'available': available})
+        if not blacklisted:
+            return referral_server, {'result': resp_lst, 'expiry': expiry, 'available': available}
+        else:
+            return referral_server, {'error': 'Blacklisted'}
 
     def hide_line(self, hide, line):
         if not self.hide_disclaimer:
@@ -452,7 +458,7 @@ class Whois(object):
             for hs in data.HIDE_STR:
                 if line == hs[0] or (line and line.startswith(hs[0])):
                     return 1
-        else: # done hiding?
+        else:  # done hiding?
             for hs in data.HIDE_STR:
                 if line == hs[1] or (line and line.startswith(hs[1])):
                     return -1
@@ -463,6 +469,12 @@ class Whois(object):
             if re.search(av_marker, line, re.IGNORECASE):
                 return 1
         return -1
+
+    def is_available(self, line):
+        for av_marker in data.BLACKLISTED:
+            if re.search(av_marker, line, re.IGNORECASE):
+                return True
+        return False
 
     def expiry(self, line):
         for exp in data.EXPIRY:
