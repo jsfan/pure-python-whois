@@ -470,7 +470,7 @@ class Whois(object):
                 return 1
         return -1
 
-    def is_available(self, line):
+    def is_blacklisted(self, line):
         for av_marker in data.BLACKLISTED:
             if re.search(av_marker, line, re.IGNORECASE):
                 return True
