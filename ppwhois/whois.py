@@ -6,7 +6,7 @@ import chardet
 import ppwhois.whois_data as data
 from ppwhois.exceptions import *
 
-IDSTRING = 'ppwhois-0.1.4'
+IDSTRING = 'ppwhois-0.1.5'
 RCVBUF = 2048
 
 
@@ -280,7 +280,10 @@ class Whois(object):
                         else:
                             merged_result.setdefault(k, []).append(v)
             result = merged_result
-        result['available'] = min(result['available'])
+        try:
+            result['available'] = min(result['available'])
+        except KeyError:
+            pass
         return result
 
     def openconn(self, server, port=None):
