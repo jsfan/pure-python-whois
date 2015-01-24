@@ -2,6 +2,7 @@ import socket
 import sys
 import re
 import chardet
+import ipaddress
 
 import ppwhois.whois_data as data
 from ppwhois.exceptions import *
@@ -48,8 +49,9 @@ class Whois(object):
         self.host = ''
         self.port = 0
         self.source_addr = None
+        self.guess_ret = 0
 
-    def lookup(self, query=None, source_addr=None, flags=None):
+    def lookup(self, query=None, source_addr=None, timeout=30, flags=None):
         self.host = ''
         self.port = 0
         fstring = ''
@@ -94,11 +96,11 @@ class Whois(object):
                         nopar = True
 
         for f, v in uargs.items():
-            if f == 'host': # host
+            if f == 'host':  # host
                 self.host = v
-            elif f == 'hide_disclaimers': # hide disclaimer
+            elif f == 'hide_disclaimers':  # hide disclaimer
                 self.hide_disclaimer = True
-            elif f == 'port': # port
+            elif f == 'port':  # port
                 self.port = v
 
         if not query and not nopar:
@@ -106,141 +108,133 @@ class Whois(object):
         elif nopar:
             self.host = 'whois.ripe.net'
 
-        query = self.normalise_domain(query)
+        query = self._normalise_domain(query)
 
         if not self.host:
-            self.host = self.guess_server(query)
+            self.guess_ret, self.host = self._guess_server(query)
 
         if source_addr:
             self.source_addr = source_addr
 
-        return self.handle_query(query, fstring)
+        return self._handle_query(query=query, flags=fstring, timeout=timeout)
 
-    def normalise_domain(self, domain):
+    def _normalise_domain(self, domain):
         domain.rstrip('. \t')
         dwords = domain.split(' ')
         last = dwords.pop()
         dwords.append(str(last.encode('idna').decode('ascii')))
         return ' '.join(dwords)
 
-    def guess_server(self, query):
+    def _guess_server(self, query):
         if ':' in query:  # IPv6
-            if query[:2].lower() == 'as':
-                try:
-                    asn = int(query[2:])
-                    for asdata in data.ASN:
-                        if asn >= asdata[0] and asn <= asdata[1]:
-                            return asdata[2]
-                    else:
-                        return '\x05'
-                except ValueError:
-                    return ''
-
-            query_parts = query.split(':')
+            if query[:2].lower() == 'as':  # NIC handle
+                return self._asn_lookup(query)
             try:
-                v6prefix = int(query_parts[0], 16)
+                ip6 = ipaddress.ip_address(query)
             except ValueError:
-                return '\x05' # unknown prefix
+                return 100, None  # unknown prefix
 
-            v6net = (v6prefix << 16) + int(query_parts[1], 16)  # second u16
-
-            for ip6net in data.IPV6:
-                if (v6net & (int('FFFFFFFF', 16) << (32 - ip6net[1]))) == ip6net[0]:
-                    return ip6net[2]
-            return '\x06'  # unknown network
+            if ip6.teredo:
+                query = ip6.teredo[1]
+            elif ip6.sixtofour:
+                query = ip6.sixtofour
+            else:
+                ip6 = int(ip6)
+                for ip6net in data.IPV6:
+                    if ip6net[0] <= ip6 <= ip6net[1]:
+                        return ip6net[2]
+                return 200, None  # unknown network
 
         if '@' in query:
-            return '\x05'  # email address
+            return 100, None  # email address
 
         # no dot and no hyphen means it's a NSI NIC handle or ASN (?)
-        if '.' not in query and not '-' in query:
+        if '.' not in query and '-' not in query:
             if query[:2].lower() == 'as':
-                try:
-                    asn = int(query[2:])
-                    for asdata in data.ASN:
-                        if asn >= asdata[0] and asn <= asdata[1]:
-                            return asdata[2]
-                    return '\x05'
-                except ValueError:
-                    pass
+                asn_test = self._asn_lookup(query)
+                if asn_test:
+                    return asn_test
             if query[0] == '!':  # NSI NIC handle
-                return 'whois.networksolutions.com'
+                return 0, 'whois.networksolutions.com'
             else:
-                return '\x05'  # probably a unknown kind of NIC handle
-
-        # smells like an IP?
-        try:
-            ip = socket.ntohl(int.from_bytes(socket.inet_pton(socket.AF_INET, query), sys.byteorder))
-            for ip4r in data.IPV4:
-                if (ip & ip4r[1]) == ip4r[0]:
-                    return ip4r[2]
-            return '\x05'
-        except socket.error:
-            pass
+                return 100, None  # probably a unknown kind of NIC handle
+        if re.match(r'(?:[0-9]\.){4}', query):
+            # check for IPv4 next
+            try:
+                ip = int(ipaddress.ip_address(query))
+                for ip4r in data.IPV4:
+                    if ip4r[0] <= ip <= ip4r[1]:
+                        return 0, ip4r[2]
+                return 100, None
+            except ValueError:  # not an IP address, still try domain name
+                pass
 
         # check the TLDs list
         for tld in data.TLDS:
             if query.endswith(tld[0]):
-                return tld[1]
+                flag = None
+                try:
+                    flag = tld[2]
+                except IndexError:
+                    pass
+                if not flag:
+                    return 0, tld[1]
+                elif flag == 'WEB':
+                    return 1, tld[1]
+                elif flag == 'NONE':
+                    return 2, None
+                elif flag == 'VERISIGN':
+                    return 4, tld[1]
+                elif flag == 'AFILIAS':
+                    return 8, None
+                elif flag == 'ARPA':
+                    return 16, None
 
         # no dot but hyphen
         if '.' not in query:
-            # search for strings at the start of the word */
+            # search for strings at the start of the word
             for nic in data.NIC:
-                if query.startswith(nic[0]):
-                    return nic[1]
+                if query.endswith(nic[0]):
+                    return 0, nic[1]
             # it's probably a network name
-            return ''
+            return None
 
-        # has dot and maybe a hyphen and it's not in tld_serv[], WTF is it?
+        # has dot and maybe a hyphen and it's not in TLDS, WTF is it?
         # either a TLD or a NIC handle we don't know about yet
-        return '\x05'
+        return 100, None
 
-    def handle_query(self, query, flags):
+    def _handle_query(self, query, flags, timeout=30):
         first_result = {}
         notice = None
         modified = True
         while modified:
             modified = False
-            code = int.from_bytes(self.host[0].encode('utf-8'), sys.byteorder)
-            if code == 0:
+            if self.guess_ret == 255:
                 self.host = data.DEFAULTSERVER
-            elif code == 1:
+            elif self.guess_ret == 1:
                 return {'error': 'This TLD has no whois server, but you can access the whois database at %s' % self.host[2:]}
-            elif code == 3:
+            elif self.guess_ret == 2:
                 return {'error': 'This TLD has no whois server.'}
-            elif code == 5:
+            elif self.guess_ret == 100:
                 return {'error': 'No whois server is known for this kind of object.'}
-            elif code == 6:
+            elif self.guess_ret == 200:
                 return {'error': 'Unknown AS number or IP network. Please upgrade this package.'}
-            elif code == 4:
-                sockfd = self.openconn(self.host[1:])
+            elif self.guess_ret == 4:
+                sockfd = self._openconn(server=self.host, timeout=timeout)
                 if not sockfd:
                     return sockfd
-                self.host, first_result = self.query_crsnic(sockfd, query)
+                self.host, first_result = self._query_crsnic(sockfd, query)
                 sockfd.close()  # close socket from first connection
-            elif code == 8:
-                sockfd = self.openconn('whois.afilias-grs.info')
+            elif self.guess_ret == 8:
+                sockfd = self._openconn(server='whois.afilias-grs.info', timeout=timeout)
                 if not sockfd:
                     return sockfd
-                self.host, first_result = self.query_afilias(sockfd, query)
+                self.host, first_result = self._query_afilias(sockfd, query)
                 sockfd.close()  # close socket from first connection
-            elif code == 0x0A:
-                p = self.convert_6to4(query)
-                notice = 'Querying for the IPv4 endpoint %s of a 6to4 IPv6 address.' % p
-                self.host = self.guess_server(p)
+            elif self.guess_ret == 16:
+                p = self._convert_inaddr(query)
                 modified = True
-                query = p
-            elif code == 0x0B:
-                p = self.convert_teredo(query)
-                notice = 'Querying for the IPv4 endpoint %s of a Teredo IPv6 address.' % p
-                self.host = self.guess_server(p)
-                modified = True
-                query = p
-            elif code == 0x0C:
-                p = self.convert_inaddr(query)
-                modified = True
-                self.host = self.guess_server(p)
+                self.host = self._guess_server(p)
 
         if not self.host:
             try:
@@ -249,12 +243,12 @@ class Whois(object):
             except KeyError:
                 return {'error': 'No host found.'}
 
-        query_string, warning = self.queryformat(self.host, flags, query)
-        sockfd = self.openconn(self.host, self.port)
+        query_string, warning = self._queryformat(self.host, flags, query)
+        sockfd = self._openconn(server=self.host, port=self.port, timeout=timeout)
         if not sockfd:
             return sockfd
 
-        server, result = self.do_query(sockfd, query_string)
+        server, result = self._do_query(sockfd, query_string)
         sockfd.close()  # close follow-up connection
 
         merged_result = {}
@@ -268,26 +262,13 @@ class Whois(object):
                         merged_result.setdefault(k, []).append(v)
 
         result = merged_result
-        if server and not result['error']:
-            _, further_result = self.handle_query(server, None, query, flags)
-            merged_result = {}
-            for d in [result, further_result]:
-                for k, v in d.items():
-                    if v:
-                        if isinstance(v, list):
-                            for l in v:
-                                merged_result.setdefault(k, []).append(l)
-                        else:
-                            merged_result.setdefault(k, []).append(v)
-            result = merged_result
         try:
             result['available'] = min(result['available'])
         except KeyError:
             pass
         return result
 
-    def openconn(self, server, port=None):
-        timeout = 10
+    def _openconn(self, server, timeout, port=None):
         port = port if port else 'nicname'
         try:
             for srv in socket.getaddrinfo(server, port, socket.AF_UNSPEC, socket.SOCK_STREAM, 0, socket.AI_ADDRCONFIG):
@@ -312,7 +293,7 @@ class Whois(object):
 
         return c
 
-    def queryformat(self, server, flags, query):
+    def _queryformat(self, server, flags, query):
         sflags = ''
         warning = None
         ripe = False
@@ -371,11 +352,11 @@ class Whois(object):
 
         return [sflags, warning]
 
-    def query_afilias(self, sock, query, prepend=''):
-        return self.query_crsnic(sock, query)
+    def _query_afilias(self, sock, query, prepend=''):
+        return self._query_crsnic(sock, query)
 
-    def query_crsnic(self, sock, query, prepend='='):
-        _, result = self.do_query(sock, prepend + query)
+    def _query_crsnic(self, sock, query, prepend='='):
+        _, result = self._do_query(sock, prepend + query)
         referral_server = None
         fresult = result.pop('result', None)
         if not fresult:
@@ -394,7 +375,7 @@ class Whois(object):
                     break
         return referral_server, result
 
-    def do_query(self, sock, query):
+    def _do_query(self, sock, query):
         hide = False
         referral_server = None
 
@@ -434,15 +415,15 @@ class Whois(object):
         available = None
         blacklisted = None
         for l in response.split('\n'):
-            hide = self.hide_line(hide, l)
+            hide = self._hide_line(hide, l)
             if not hide:
                 resp_lst.append(l.rstrip())
             if not expiry:
-                expiry = self.expiry(l)
+                expiry = self._expiry(l)
             if not available or available < 0:
-                available = self.is_available(l)
+                available = self._is_available(l)
             if not blacklisted:
-                blacklisted = self.is_blacklisted(l)
+                blacklisted = self._is_blacklisted(l)
 
         if hide:
             return ('', 'Catastrophic error: disclaimer text has been changed.\n'
@@ -453,7 +434,7 @@ class Whois(object):
         else:
             return referral_server, {'error': 'Blacklisted'}
 
-    def hide_line(self, hide, line):
+    def _hide_line(self, hide, line):
         if not self.hide_disclaimer:
             return 0
         hide = 0 if hide < 1 else 1
@@ -467,58 +448,43 @@ class Whois(object):
                     return -1
         return 0
 
-    def is_available(self, line):
+    def _is_available(self, line):
         for av_marker in data.AVAILABLE:
             if re.search(av_marker, line, re.IGNORECASE):
                 return 1
         return -1
 
-    def is_blacklisted(self, line):
+    def _is_blacklisted(self, line):
         for av_marker in data.BLACKLISTED:
             if re.search(av_marker, line, re.IGNORECASE):
                 return True
         return False
 
-    def expiry(self, line):
+    def _expiry(self, line):
         for exp in data.EXPIRY:
             if re.search(exp, line, re.IGNORECASE):
                 return re.sub(exp, '', line, flags=re.IGNORECASE)
         return False
 
-
-    def convert_teredo(self, s):
-        words = s.split(':')
-        if words[0] != '2001' or int(words[1]) != 0:
-            return '0.0.0.0'
-        words = words[-2:]
-        hip = hex(int(''.join(words[:2]), 16) ^ int('ffffffff', 16))
-        hip = hip[2:]
-        ip = []
-        while hip:
-            ip.append(str(int(hip[:2], 16)))
-            hip = hip[2:]
-        return '.'.join(ip)
-
-    def convert_6to4(self, s):
-        words = s.split(':')
-        if words[0] != '2002':
-            return '0.0.0.0'
-
-        ip4_oct = []
-        words.pop(0)
-        for b in words[:2]:
-            ip4_oct.append(str(int(b[:2], 16)))
-            ip4_oct.append(str(int(b[2:], 16)))
-
-        return '.'.join(ip4_oct)
-
-    def convert_inaddr(self, s):
+    def _convert_inaddr(self, s):
         if not s.endswith('.in-addr.arpa'):
             return '0.0.0.0'
         words = s.split('.')
         ip = words[:4]
         ip.reverse()
         return '.'.join(ip)
+
+    def _asn_lookup(self, handle):
+        try:
+            asn = int(handle[2:])
+            for asdata in data.ASN:
+                if asdata[0] <= asn <= asdata[1]:
+                    return 0, asdata[2]
+            else:
+                return 100, None
+        except ValueError:
+            return None
+
 
 if __name__ == "__main__":
     print('This package can currently only be used as a library.')
