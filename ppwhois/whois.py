@@ -123,7 +123,7 @@ class Whois(object):
         dwords = domain.split(' ')
         last = dwords.pop()
         dwords.append(str(last.encode('idna').decode('ascii')))
-        return ' '.join(dwords)
+        return ' '.join(dwords).lower()
 
     def _guess_server(self, query):
         if ':' in query:  # IPv6
@@ -245,11 +245,18 @@ class Whois(object):
 
         query_string, warning = self._queryformat(self.host, flags, query)
         sockfd = self._openconn(server=self.host, port=self.port, timeout=timeout)
-        if not sockfd:
+        result = {}
+        if not sockfd and not first_result:
             return sockfd
 
-        server, result = self._do_query(sockfd, query_string)
-        sockfd.close()  # close follow-up connection
+        if sockfd:
+            try:
+                server, result = self._do_query(sockfd, query_string)
+                sockfd.close()  # close follow-up connection
+            except (TransferFailed, ConnectionReset):
+                result = {'warning': 'Authoritative WHOIS server could not be contacted.'}
+        else:
+            result = {'warning': 'Authoritative WHOIS server could not be contacted.'}
 
         merged_result = {}
         for d in [first_result, result, {'warning': warning}, {'notice': notice}]:
