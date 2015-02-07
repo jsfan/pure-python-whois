@@ -7,8 +7,8 @@ from .whois_lookup_data import *
 
 DEFAULTSERVER = "whois.arin.net"
 
-REFERTO_FORMAT = "referto:\s+whois\s-h\s([^\s]*)\s-p\s([^\s])\s(.*)$"
-REFERRAL_FORMAT = "ReferralServer:\s+r*whois://\([^/])#\s*$"
+REFERTO_FORMAT = r"referto:\s+whois\s+-h\s+([^\s]*)(?:\s+-p\s([^\s]+))?(?:\s+(.*))?$"
+REFERRAL_FORMAT = r"ReferralServer:\s+r?whois://([^/]+)#\s*$"
 
 CRSDOMLABEL = "^\s*Domain\sName:\s*"
 CRSWHOISLABEL = "^\s*Whois\sServer:\s*(.*)$"

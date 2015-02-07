@@ -243,37 +243,47 @@ class Whois(object):
             except KeyError:
                 return {'error': 'No host found.'}
 
-        query_string, warning = self._queryformat(self.host, flags, query)
-        sockfd = self._openconn(server=self.host, port=self.port, timeout=timeout)
-        result = {}
-        if not sockfd and not first_result:
-            return sockfd
+        while self.host:
+            server = None
+            query_string, warning = self._queryformat(self.host, flags, query)
+            sockfd = self._openconn(server=self.host, port=self.port, timeout=timeout)
+            result = {}
+            if not sockfd and not first_result:
+                return sockfd
 
-        if sockfd:
-            try:
-                server, result = self._do_query(sockfd, query_string)
-                sockfd.close()  # close follow-up connection
-            except (TransferFailed, ConnectionReset):
+            if sockfd:
+                try:
+                    server, result = self._do_query(sockfd, query_string)
+                    sockfd.close()  # close follow-up connection
+                except (TransferFailed, ConnectionReset):
+                    result = {'warning': 'Authoritative WHOIS server could not be contacted.'}
+            else:
                 result = {'warning': 'Authoritative WHOIS server could not be contacted.'}
-        else:
-            result = {'warning': 'Authoritative WHOIS server could not be contacted.'}
 
-        merged_result = {}
-        for d in [first_result, result, {'warning': warning}, {'notice': notice}]:
-            for k, v in d.items():
-                if v:
-                    if isinstance(v, list):
-                        for l in v:
-                            merged_result.setdefault(k, []).append(l)
-                    else:
-                        merged_result.setdefault(k, []).append(v)
+            merged_result = {}
+            for d in [first_result, result, {'warning': warning}, {'notice': notice}]:
+                for k, v in d.items():
+                    if v:
+                        if isinstance(v, list):
+                            for l in v:
+                                merged_result.setdefault(k, []).append(l)
+                        else:
+                            if k in merged_result.keys() and not isinstance(merged_result[k], list):
+                                merged_result[k] = v
+                            else:
+                                merged_result.setdefault(k, []).append(v)
 
-        result = merged_result
-        try:
-            result['available'] = min(result['available'])
-        except KeyError:
-            pass
-        return result
+            first_result = merged_result
+            try:
+                first_result['available'] = min(first_result['available'])
+            except KeyError:
+                pass
+            try:
+                self.host, self.port = server.split(':', 2)
+            except (ValueError, AttributeError):
+                self.host = server
+
+        return first_result
 
     def _openconn(self, server, timeout, port=None):
         port = port if port else 'nicname'
@@ -406,14 +416,18 @@ class Whois(object):
             # % referto: whois -h whois.arin.net -p 43 as 1
             if not referral_server and '% referto:' in rb:
                 # XXX we are ignoring the new query string
-                rs = re.compile(data.REFERTO_FORMAT)
+                rs = re.search(data.REFERTO_FORMAT, rb, flags=re.MULTILINE)
                 ns, np = rs.group(1, 2)
+                if np:
+                    referral_server = ':'.join([ns, np])
+                else:
+                    referral_server = ns
 
             # ARIN referrals:
             # ReferralServer: rwhois://rwhois.fuse.net:4321/
             # ReferralServer: whois://whois.ripe.net
             if not referral_server and 'ReferralServer' in rb:
-                rs = re.compile(data.REFERRAL_FORMAT)
+                rs = re.search(data.REFERRAL_FORMAT, rb, flags=re.MULTILINE)
                 referral_server = rs.group(1)
             response += rb
 
