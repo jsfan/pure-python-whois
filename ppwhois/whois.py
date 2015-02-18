@@ -398,12 +398,12 @@ class Whois(object):
 
         try:
             sock.send(("%s\r\n" % query).encode('ascii'))
-            sock.setblocking(True)
         except socket.error as e:
             raise ConnectionReset('Connection was reset  with error "%s" while sending data' % e)
 
         response = ''
         while True:
+            print(sock.gettimeout())
             try:
                 rb = sock.recv(RCVBUF)
             except socket.error as e:
@@ -508,4 +508,6 @@ class Whois(object):
 
 
 if __name__ == "__main__":
+    w = Whois()
+    w.lookup('communitiesagainstturbinesscotland.com')
     print('This package can currently only be used as a library.')

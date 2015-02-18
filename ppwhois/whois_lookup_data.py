@@ -564,7 +564,7 @@ TLDS = [
 	('.ma', '', 'whois.iam.net.ma'),
 	('.mc', '', 'NONE'),
 	('.md', 'http://www.dns.md/wh1.php', 'WEB'),
-	('.me', '', 'whois.nic.me'),
+	('.me', 'whois.nic.me', None),
 	('.mg', 'whois.nic.mg', None),
 	('.mh', '', 'NONE'),
 	('.mk', 'whois.marnet.mk', None),
