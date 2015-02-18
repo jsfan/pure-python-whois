@@ -403,7 +403,6 @@ class Whois(object):
 
         response = ''
         while True:
-            print(sock.gettimeout())
             try:
                 rb = sock.recv(RCVBUF)
             except socket.error as e:
@@ -508,6 +507,4 @@ class Whois(object):
 
 
 if __name__ == "__main__":
-    w = Whois()
-    w.lookup('communitiesagainstturbinesscotland.com')
     print('This package can currently only be used as a library.')
